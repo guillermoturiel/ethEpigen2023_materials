@@ -1,0 +1,60 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(ensembldb)
+  library(GenomicRanges)
+  library(epiwraps)
+})
+```
+Downloading the different annotations data for the assignment:
+```{r}
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+ah <- AnnotationHub()
+# to query the AH programmatically:
+mouse <- query(ah, c("Ensembl","Mus musculus", "GRCm38", "102"))
+mouse_ensdb <-  ah[["AH89211"]]
+mouse_ensdb
+
+m_genome <- query(ah, c("GRCm38","TwoBit", "dna_sm"))
+mouse_genome <- ah[["AH49775"]]
+mouse_genome
+
+drosophila <- query(ah, c("BDGP6","TwoBit", "dna_sm"))
+dro_genome <- ah[["AH49674"]]
+dro_genome
+```
+
+How many different ensembl gene IDs and gene symbols are there for protein-coding genes?
+
+```{r}
+genes = genes(mouse_ensdb, filter=GeneBiotypeFilter("protein_coding"))
+
+#Number of ensembl gene IDs
+length(unique(genes$gene_id))
+
+#Number of gene symbols
+length(unique(genes$gene_name))
+```
+Plot the distribution of the (spliced) length of protein-coding transcripts
+
+```{r}
+exsPerTx <- exonsBy(mouse_ensdb, column=c("tx_id","tx_biotype"), 
+                    filter=TxBiotypeFilter("protein_coding"))
+exsPerTx
+tx_length <- sum(width(exsPerTx))
+hist(tx_length)
+```
+
