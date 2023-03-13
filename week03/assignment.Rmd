@@ -1,0 +1,106 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(Rsubread)
+  library(rtracklayer)
+  library(Biostrings)
+  library(Rfastp)
+  library(epiwraps)
+})
+
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+
+ah <- AnnotationHub()
+```
+
+#Downloading raw reads from the Drosophila ChIP-seq experiment for the protein CTCF
+
+```{r, eval=FALSE}
+options(timeout=3600) 
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week03")
+dir.create("raw")
+download.file("https://www.encodeproject.org/files/ENCFF127RRR/@@download/ENCFF127RRR.fastq.gz", dest="raw/CTCF.fastq.gz", mode = "wb")
+```
+
+#Trimming using Rfastp
+
+```{r}
+dir.create("rfastp.trimmed")
+qc <- lapply(c(CTCF="raw/CTCF.fastq.gz"), FUN=function(x){
+  Rfastp::rfastp(x, thread=4, overrepresentationAnalysis=TRUE,
+                 outputFastq=file.path("rfastp.trimmed/",gsub("\\.fastq\\.gz$","",basename(x))))
+})
+```
+
+#QC plots of the trimming
+
+```{r}
+Rfastp::curvePlot(qc$CTCF, curve="content_curves")
+```
+
+
+# Alignment using Rsubread
+
+## Building a genome index for mapping
+
+
+```{r, eval=FALSE}
+# we get the genome sequence from AnnotationHub
+genome <- ah[["AH49674"]]
+# we create a new directory that will contain the genome index
+dir.create("BDGP6_genome")
+# we write the genome sequence in fasta format
+export(import.2bit(genome), "BDGP6_genome/genome.fasta.gz", compress=TRUE)
+# we build a Rsubread index
+Rsubread::buildindex("BDGP6_genome/rsubread", reference="BDGP6_genome/genome.fasta.gz")
+```
+
+### Alignment
+
+```{r}
+dir.create("aligned")
+align.stats <- Rsubread::align(index="BDGP6_genome/rsubread", type="dna",
+                               readfile1="rfastp.trimmed/CTCF_R1.fastq.gz",                                          
+                               output_file="aligned/CTCF.bam",
+                               nthreads=6, sortReadsByCoordinates=TRUE)
+align.stats
+
+#Number of mapped reads
+
+paste("Number of mapped reads:", align.stats["Mapped_reads",])
+
+#Percentage of mapped reads
+
+paste("Percentage of mapped reads:", (align.stats["Mapped_reads",]/align.stats["Total_reads",])*100)
+
+
+```
+#Peak calling
+
+```{r}
+peaks <- callPeaks("aligned/CTCF.bam", fragLength=50L)
+
+#Number of peaks found
+paste("Number of peaks reported:", length(peaks))
+
+```
+#Plotting the signal around the most significant peak
+
+```{r}
+sig <- order(peaks$log10FDR,decreasing=TRUE)[1]
+region <- as.character(granges(peaks[sig]))
+plotSignalTracks(c(CTCF="aligned/CTCF.bam"), region=region, main=paste("Peak", sig))
+```
+
