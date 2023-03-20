@@ -1,0 +1,52 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-03-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(AnnotationHub)
+  library(rtracklayer)
+  library(epiwraps)
+  library(GenomicRanges)
+})
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week04")
+
+```
+Downloading the peaks of p300 and the different histone markers in bed format from ENCODE
+
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF653YVR/@@download/ENCFF653YVR.bed.gz", dest="p300.bed.gz")
+p300_peaks <- rtracklayer::import("p300.bed.gz", format="narrowPeak")
+
+download.file("https://www.encodeproject.org/files/ENCFF247GVM/@@download/ENCFF247GVM.bed.gz", dest="H3K4me3.bed.gz")
+H3K4me3_peaks <- rtracklayer::import("H3K4me3.bed.gz", format="narrowPeak")
+
+download.file("https://www.encodeproject.org/files/ENCFF333IJH/@@download/ENCFF333IJH.bed.gz", dest="H3K4me1.bed.gz")
+H3K4me1_peaks <- rtracklayer::import("H3K4me1.bed.gz", format="narrowPeak")
+
+download.file("https://www.encodeproject.org/files/ENCFF360VIS/@@download/ENCFF360VIS.bed.gz", dest="H3K27ac.bed.gz")
+H3K27ac_peaks <- rtracklayer::import("H3K27ac.bed.gz", format="narrowPeak")
+
+download.file("https://www.encodeproject.org/files/ENCFF558YNC/@@download/ENCFF558YNC.bed.gz", dest="H3K27me3.bed.gz")
+H3K27me3_peaks <- rtracklayer::import("H3K27me3.bed.gz", format="narrowPeak")
+```
+Checking the number of p300 peaks that overlap with each histone marker
+
+```{r}
+print(paste(table(overlapsAny(p300_peaks, H3K4me3_peaks))[2],"of the p300 peaks overlap with H3K4me3, which is",(table(overlapsAny(p300_peaks, H3K4me3_peaks))[2]/length(p300_peaks))*100,"% of the p300 peaks"))
+print(paste(table(overlapsAny(p300_peaks, H3K4me1_peaks))[2],"of the p300 peaks overlap with H3K4me1, which is",(table(overlapsAny(p300_peaks, H3K4me1_peaks))[2]/length(p300_peaks))*100,"% of the p300 peaks"))
+print(paste(table(overlapsAny(p300_peaks, H3K27ac_peaks))[2],"of the p300 peaks overlap with H3K27ac, which is",(table(overlapsAny(p300_peaks, H3K27ac_peaks))[2]/length(p300_peaks))*100,"% of the p300 peaks"))
+print(paste(table(overlapsAny(p300_peaks, H3K27me3_peaks))[2],"of the p300 peaks overlap with H3K27me3, which is",(table(overlapsAny(p300_peaks, H3K27me3_peaks))[2]/length(p300_peaks))*100,"% of the p300 peaks"))
+```
+
+
