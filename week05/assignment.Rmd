@@ -1,0 +1,56 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-03-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(epiwraps)
+  library(rtracklayer)
+  library(ggplot2)
+})
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week05")
+```
+## Loading files from mESC
+```{r}
+H3K27me3_peaks <- rtracklayer::import("C:/Users/guruiz/Desktop/ethEpigen2023/week04/H3K27me3.bed.gz", format="narrowPeak")
+H3K4me3_peaks <- rtracklayer::import("C:/Users/guruiz/Desktop/ethEpigen2023/week04/H3K4me3.bed.gz", format="narrowPeak")
+
+```
+## Subsetting bivalent domains in mESC
+```{r}
+bivalent_mesc <- H3K4me3_peaks[overlapsAny(H3K4me3_peaks, H3K27me3_peaks)]
+print(paste(length(bivalent_mesc), "peaks from H3K4me3 are bilavent with H3k27me3 peaks in mESC"))
+```
+
+
+## Downloading H3K27me3 and H3K4me3 peaks from hepatocytes
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF251NKN/@@download/ENCFF251NKN.bed.gz", dest="H3K27me3_hep.bed.gz")
+H3K27me3_hep <- rtracklayer::import("H3K27me3_hep.bed.gz", format="narrowPeak")
+
+download.file("https://www.encodeproject.org/files/ENCFF692VTG/@@download/ENCFF692VTG.bed.gz", dest="H3K4me3_hep.bed.gz")
+H3K4me3_hep <- rtracklayer::import("H3K4me3_hep.bed.gz", format="narrowPeak")
+```
+
+## Checking overlaps between bivalent marks in mESC and the marks in hepatocytes
+```{r}
+peaks = list(bivalent=bivalent_mesc, H3K27me3_hep=H3K27me3_hep, H3K4me3_hep=H3K4me3_hep)
+regionUpset(peaks, reference = peaks$bivalent, nsets=length(peaks))
+```
+
+From the upset plot we get the following conclusions:
+- 345 of the bivalent peaks in mESC dont overlap any mark in hepatocytes.
+- 1149 bivalent peaks overlap only with H3K27me3 peaks in hepatocytes.
+- 957 bivalent peaks overlap only with H3K4me3 peaks in hepatocytes.
+- 1143 bivalent peaks overlap with both H3K27me3 and H3K4me3 peaks in hepatocytes.
+
