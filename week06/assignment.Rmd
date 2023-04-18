@@ -1,0 +1,87 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-04-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({  
+  library(AnnotationHub)
+  library(GenomicRanges)
+  library(ggplot2)
+  library(motifmatchr)
+  library(Biostrings) # for handling sequences
+  library(MotifDb) # database of motifs
+  library(TFBSTools) # for handling some motif formats
+  library(universalmotif) # for converting motifs to various formats
+  library(PWMEnrich) # for R-based motif enrichment analysis
+})
+
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week06")
+```
+## Downloading peaks for factor REST in mouse myocytes
+```{r}
+download.file("https://www.encodeproject.org/files/ENCFF368VWJ/@@download/ENCFF368VWJ.bed.gz", "REST_mouse.bed.gz")
+peaks <- rtracklayer::import("REST_mouse.bed.gz", format="NarrowPeak")
+
+peaks
+```
+
+## Centering the peaks for motif scanning
+```{r}
+peak_centers <- resize(peaks, fix="center", width=100)
+# we get the genome sequence:
+
+genome <- BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10
+
+# we get the sequences corresponding to the peak centers:
+
+peak_seqs <- Biostrings::getSeq(genome, peak_centers)
+names(peak_seqs) <- as.character(granges(peak_centers))
+peak_seqs
+```
+## Getting the motif for REST factor
+```{r}
+# we search for "REST" in the motif database
+motifs <- query(MotifDb, "REST")
+# there are several matching motifs:
+names(motifs)
+# we select one corresponding to mice:
+motif <- motifs[["Mmusculus-HOCOMOCOv10-REST_MOUSE.H10MO.A"]]
+# we visualize it:
+view_motifs(motif)
+```
+## Looking for the motif in the centered peaks file using motifmatchr
+```{r}
+# Converting the motif to a format that this package will accept
+motif2 <- convert_motifs(motif, class="TFBSTools-PFMatrix")
+#Motif scanning
+moi <- motifmatchr::matchMotifs(motif2, subject=peak_centers, genome=genome, out="positions")[[1]]
+head(moi)
+```
+```{r}
+# peaks with motif:
+peaks_w_motif <- peaks[overlapsAny(peaks,moi)]
+print(paste0("Of the ", length(peaks)," peaks, ", length(peaks_w_motif)," (",round(length(peaks_w_motif)/length(peaks)*100,digits=2),"%) contain a motif" ))
+```
+```{r}
+#Looking for all instances of the motif in the genome
+motif_instances <- epiwraps::findMotifInstances(DNAStringSet(as.list(genome)), motif)
+instances_w_peaks <- motif_instances[overlapsAny(motif_instances, peaks)]
+length(instances_w_peaks)
+length(motif_instances)
+print(paste0("Of the ", length(motif_instances)," motif instances in the genome, ", length(instances_w_peaks)," (",round(length(instances_w_peaks)/length(motif_instances)*100,digits=2),"%) overlap a peak" ))
+
+```
+
+
+
+
