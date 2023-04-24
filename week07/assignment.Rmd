@@ -1,0 +1,101 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-04-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(epiwraps)
+  library(AnnotationHub)
+  library(MotifDb)
+  library(universalmotif)
+  library(ensembldb)
+  library(ggplot2)
+})
+
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week07")
+
+ah <- AnnotationHub(localHub=TRUE)
+```
+## Download the data
+
+```{r, eval=FALSE}
+download.file("https://ethz-ins.org/content/w7/atac.chr19.bam", "atac.chr19.bam", mode="wb")
+download.file("https://ethz-ins.org/content/w7/atac.chr19.bam.bai", "atac.chr19.bam.bai", mode="wb")
+```
+## Preparing tracks
+
+```{r}
+bam <- "atac.chr19.bam"
+
+# create a track using only nucleosome-free fragments, the number of cuts/insertion sites at each position
+bam2bw(bam, output_bw = "NF_cuts.bw", paired=TRUE, binWidth=1L, type="ends", minFragLength=30, 
+       maxFragLength=120, shift=c(4L,-5L), forceSeqlevelsStyle = "Ensembl")
+
+# create a track using only mono-nucleosome fragments, the number of cuts/insertion sites at each position
+bam2bw(bam, output_bw = "N_cuts.bw", paired=TRUE, binWidth=1L, type="ends", minFragLength=140,
+       maxFragLength=220, shift=c(4L,-5L), forceSeqlevelsStyle = "Ensembl")
+```
+## Obtaining the sites with a motif for KLF4 or FOXD3
+
+```{r}
+# KLF4 motif
+motif_klf4 <- query(MotifDb, c("KLF4","Mus"))[[1]]
+motif2_klf4 <- convert_motifs(motif_klf4, class="TFBSTools-PFMatrix")
+
+# FOXD3 motif
+motif_foxd3 <- query(MotifDb, c("FOXD3","Mus"))[[1]]
+motif2_foxd3 <- convert_motifs(motif_foxd3, class="TFBSTools-PFMatrix")
+
+genome <- ah[["AH68356"]]
+# get the sequence for chr19:
+chr19 <- import(genome)["19"]
+
+
+# find motif occurences for both factors
+
+moi_klf4 <- motifmatchr::matchMotifs(motif2_klf4, chr19, out="positions", p.cutoff=1e-5)[[1]]
+# convert to GRanges (when using motifmatchr)
+moi_klf4 <- as(setNames(moi_klf4,names(chr19)), "GRanges")
+
+moi_foxd3 <- motifmatchr::matchMotifs(motif2_foxd3, chr19, out="positions", p.cutoff=1e-5)[[1]]
+# convert to GRanges (when using motifmatchr)
+moi_foxd3 <- as(setNames(moi_foxd3,names(chr19)), "GRanges")
+```
+
+## Plotting signal around the motif occurences
+
+```{r}
+# we prepare the list of tracks
+tracks <- c("NF cuts"="NF_cuts.bw", "N cuts"="N_cuts.bw")
+
+# we zoom in to 500bp around the motif centers, in windows of 5bp
+sm_klf4 <- signal2Matrix(tracks, moi_klf4, w=5, extend=500)
+sm_foxd3 <- signal2Matrix(tracks, moi_foxd3, w=5, extend=500)
+
+# Background normalization
+nf <- bwNormFactors(tracks, useSeqLevels="19", nwind=5000L)
+# then we apply the normalization factors:
+smb_klf4 <- rescaleSignalMatrices(sm_klf4, nf)
+smb_foxd3 <- rescaleSignalMatrices(sm_foxd3, nf)
+```
+##Signal around KLF4 motif ocurrences
+
+```{r}
+plotEnrichedHeatmaps(smb_klf4, colors = c("white","darkred"))
+```
+
+##Signal around FOXD3 motif ocurrences
+
+```{r}
+plotEnrichedHeatmaps(smb_foxd3, colors = c("white","darkred"))
+```
+
