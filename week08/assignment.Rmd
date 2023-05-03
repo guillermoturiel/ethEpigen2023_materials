@@ -1,0 +1,130 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-05-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(epiwraps)
+  library(motifmatchr)
+  library(MotifDb)
+  library(universalmotif)
+  library(sechm)
+  library(BiocParallel)
+  library(ggplot2)
+  library(chromVAR) # for motif accessibility estimation
+  library(SummarizedExperiment) # data structure
+  library(limma) # for statistical analysis
+})
+
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+
+```
+## Download the data
+
+```{r}
+download.file("https://ethz-ins.org/content/mouse_mm38_hippocampus.peakCounts.SE.rds","mouse_mm38_hippocampus.peakCounts.SE.rds" )
+se = readRDS("mouse_mm38_hippocampus.peakCounts.SE.rds")
+```
+
+## Adding sample information
+
+```{r}
+se$condition = rep(c("Control", "FSS"), each=6)
+se$sex = rep(rep(c("female", "male"), each=3),2)
+colnames(se) = paste0(se$condition,"_", se$sex,"_",rep(1:3, 4))
+```
+
+## Get the database of motifs
+
+```{r}
+motifs <- query(MotifDb, c("HOCOMOCOv10", "Mmusculus"))
+motifs <- do.call(TFBSTools::PWMatrixList, setNames(
+           universalmotif::convert_motifs(motifs, class="TFBSTools-PWMatrix"),
+           mcols(motifs)$providerName)) #giving geneSymbol for the names gives duplicates names, as some TFs have more than one entry in the database
+#and mouse genome 
+genome <- BSgenome.Mmusculus.UCSC.mm10::BSgenome.Mmusculus.UCSC.mm10
+
+seqlevelsStyle(se) = "UCSC"
+
+```
+
+## Adding GC bias
+
+```{r}
+se <- suppressWarnings(chromVAR::addGCBias(se, genome=genome))
+```
+
+## Get the occurence of each motif in each peak
+
+```{r}
+moi <- suppressWarnings(motifmatchr::matchMotifs(motifs, subject=se, genome=genome))
+```
+
+## Aggregating motif score per sample
+
+```{r}
+dev <- suppressWarnings(chromVAR::computeDeviations(object = se, annotations=moi,
+                                   background_peaks=getBackgroundPeaks(se, niterations=1000)))
+#normalizing z scores
+assays(dev)$norm <- scale(assays(dev)$z)
+```
+
+## Differential analysis
+
+```{r}
+#between conditions
+dev$condition <- factor(dev$condition)
+dev$condition <- relevel(dev$condition, "Control")
+mm_cond <- model.matrix(~condition, data=as.data.frame(colData(dev)))
+
+fit_cond <- eBayes(lmFit(assays(dev)$norm, mm_cond))
+res_cond <- as.data.frame(topTable(fit_cond, coef="conditionFSS", number = Inf))
+head(res_cond)
+
+res_cond$TF <- row.names(res_cond)
+
+#Number of significant motifs (adjusted p-value < 0.05)
+print(paste(length(rownames(res_cond[res_cond$adj.P.Val < 0.05,])), "motifs were significant based on forced swim stress differences"))
+
+ggplot(res_cond, aes(logFC, -log10(adj.P.Val), label=TF)) + geom_text()
+
+metadata(dev)$anno_colors$condition <- c(Control="#BD36C9", FSS="#368CC9")
+metadata(dev)$anno_colors$sex <- c(female="#C97336", male="#42C936")
+
+sechm(dev, features = rownames(res_cond[res_cond$adj.P.Val < 0.05,]), assayName="norm", top_annotation = c("condition", "sex"),cluster_cols=TRUE)
+```
+
+```{r}
+#between sex
+dev$sex <- factor(dev$sex)
+dev$sex <- relevel(dev$sex, "female")
+mm_sex <- model.matrix(~sex, data=as.data.frame(colData(dev)))
+
+fit_sex <- eBayes(lmFit(assays(dev)$norm, mm_sex))
+res_sex <- as.data.frame(topTable(fit_sex, coef="sexmale", number = Inf))
+head(res_sex)
+
+res_sex$TF <- row.names(res_sex)
+
+#Number of significant motifs (adjusted p-value < 0.05)
+print(paste(length(rownames(res_sex[res_sex$adj.P.Val < 0.05,])), "motifs were significant based on sex differences"))
+
+ggplot(res_sex, aes(logFC, -log10(adj.P.Val), label=TF)) + geom_text()
+
+sechm(dev, features = rownames(res_sex[res_sex$adj.P.Val < 0.05,]), assayName="norm", top_annotation = c("sex", "condition"),cluster_cols=TRUE)
+```
+
+
+```{r}
+print(paste("Based on this analysis, only", length(rownames(res_cond[res_cond$adj.P.Val < 0.05,])) ,"motifs are significantly different based on the effect of forced swim stress. However,", length(rownames(res_sex[res_sex$adj.P.Val < 0.05,])) ,"motifs are significantly different based on sex. Then, we could conclude that the experimental effect of FSS is not very important, as the biggest variability is seen between male and female mice."))
+```
+
+
