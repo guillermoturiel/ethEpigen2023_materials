@@ -1,0 +1,20 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-05-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+   Atf4 have been shown to be an important TF regulating endothelial cell (EC) angiogenesis by controlling the expression of genes involved in amino acid uptake and metabolism as shown here: https://pubmed.ncbi.nlm.nih.gov/34358431/. The authors identified an Atf4+ EC population using single cell RNA seq and reported a set of metabolic genes dependent on Atf4 activity by performing bulk RNA seq in WT vs ATF4KO ECs. Atf4 works in heterodimers with other bZIP TFs but how these interactions regulate the expression of certain genes is not completely understood. In fact, the authors reported that Atf4+ ECs also express some of these Atf4-binding partners such as Fos and Jun. The aim of this project is to use ChIP-seq data of these two TFs performed on human umbilical vein endothelial cells (HUVECs) to analyze whether they also regulate the expression of metabolic genes. I will identify which promoter regions are bound by Jun and Fos in each CHIP-seq dataset and then intercross this information with the ATF4-dependent metabolic genes reported in the cited paper. Additionally, I will analyze which TF correlate the most with ATF4 metabolic signature or whether Jun and Fos are responsible of different metabolic programs when they work together with ATF4. 
+   
+   The ChIP-seq data of Fos and Jun will be obtained from here: 
+   https://www.encodeproject.org/experiments/ENCSR000EVU/
+   https://www.encodeproject.org/experiments/ENCSR000EFA/
+   
+And the set of Atf4-dependent metabolic genes relevant for EC biology will be obtained from the cited paper. 
+    
