@@ -1,0 +1,94 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(epiwraps)
+  library(ggplot2)
+  library(rGREAT)
+})
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week10")
+```
+
+
+## Download the data
+
+```{r, eval=FALSE}
+options(timeout = 6000)
+download.file("https://ethz-ins.org/content/w10.assignment.zip", "w10.assignment.zip")
+unzip("w10.assignment.zip")
+```
+
+## Prepare the regions and the tracks
+
+```{r}
+tracks <- list.files(pattern="bw$")
+peaks <- list.files(pattern="bed$")
+# we first import the peaks
+peaks <- lapply(peaks, rtracklayer::import.bed)
+# we'll focus on the high-quality peaks
+peaks <- lapply(peaks, FUN=function(x) x[x$score>800])
+# we get the union of non-redundant regions
+regions <- reduce(unlist(GRangesList(peaks)))
+```
+
+## Plot the signals
+
+```{r}
+ml <- signal2Matrix(tracks, regions, extend=2000)
+
+plotEnrichedHeatmaps(ml)
+```
+
+## Clustering
+
+```{r}
+k=4
+set.seed(123)
+cls <- clusterSignalMatrices(ml, k=k)
+mycolors <- scales::hue_pal()(k)
+names(mycolors) = 1:k
+plotEnrichedHeatmaps(ml, row_split=cls, mean_color=mycolors)
+d <- meltSignals(ml, splitBy=cls)
+ggplot(d, aes(position, mean, colour=sample)) + geom_line() + facet_wrap(~split)
+```
+
+Interpretation of the clusters:
+
+- Cluster 1: a set of regions mainly bound by Creb1, although a little signal is also detected for Creb3L1.
+
+- Cluster 2: a set of regions mainly bound by all 3 factors.
+
+- Cluster 3: a set of regions that are only bound by Creb3 and not any other factor.
+
+- Cluster 4: a set of regions mainly bound by Creb1 and Creb3L1.
+
+From this results we can conclude that Creb1 and Creb3L1 often bind to the same regions (clusters 1 and 4) while Creb3 mainly binds to other regions in an independent manner (cluster 3). However, a small set of regions is also bound by all 3 factors (cluster 2). 
+
+## Enrichment analysis
+
+```{r}
+# we first split the regions by cluster:
+split_regions <- split(regions, cls)
+# we send the data to the GREAT server to run an enrichment analysis
+#We focus on cluster 3
+job <- submitGreatJob(gr=split_regions[["3"]], bg=regions, species="hg38")
+res <- getEnrichmentTables(job)
+```
+
+We plot the top Molecular Functions:
+
+```{r, fig.width=9, fig.height=6}
+bp <- res$`GO Molecular Function`
+head(bp)
+ggplot(head(bp,15), aes(Hyper_Fold_Enrichment, reorder(name, Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) + geom_point() + scale_color_viridis_c()
+```
+
+
+The enrichment analysis on cluster 3 (regions only bound by Creb3) revealed that these regions are related to genes involved in receptor binding and activity. These receptors are mainly related to cytokines such as TNF.
