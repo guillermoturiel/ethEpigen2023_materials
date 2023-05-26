@@ -53,13 +53,14 @@ chr22 <-  GRanges(seqnames=Rle(c("22")),
                   ranges = IRanges(1, end=195471971))
 genesChr22 <- genes(ensdb, columns=c("gene_seq_start", "gene_seq_end", "gene_name"),
                     filter=GRangesFilter(chr22))
+#For an unknown reason the function seqlevelsStyle(genesChr22) <- "UCSC" does not work for me, so I directly load a version of previous object in UCSC format. 
+genesChr22 <- readRDS("genes_chr22.rds")
 
 ```
 
 
 Differential methylation testing: 
 ```{r}
-seqlevelsStyle(bs) <- "UCSC"
 design <- model.matrix(~Type+Pair, data=pData(bs)) # design matrix
 
 # adapt for methylation data
@@ -75,7 +76,7 @@ dmrRangesGenes <- dmrRanges[!is.na(dmrRanges$overlapping.genes)]
 Obtain the coordinates of the genes within DMRs. 
 ```{r}
 # Get the genes within top 5 Differentially methylated regions
-topIdx <- order(dmrRangesGenes$min_smoothed_fdr)[1:4]
+topIdx <- order(dmrRangesGenes$min_smoothed_fdr)[1:5]
 genesDmr <- unlist(tstrsplit(dmrRangesGenes[topIdx]$overlapping.genes, split=", "))
 genesDmr <- genesDmr[!is.na(genesDmr)]
 dmrGenes <- genesChr22[genesChr22$gene_name %in% genesDmr]
@@ -83,7 +84,6 @@ dmrGenes
 ```
 Retrieve methylation levels and visualize:
 ```{r}
-seqlevelsStyle(bs) <- "NCBI"
 metPr <- bsseq::getMeth(bs, 
                         regions=genesChr22, 
                         what="perRegion")
@@ -106,38 +106,42 @@ pheatmap::pheatmap(metPr[dmrGenes$gene_name,],
 Extracting significant DMRs in normal and cancer samples:
 
 ```{r}
-normal_dmr <- dmrRangesGenes[dmrRangesGenes$min_smoothed_fdr < 0.05 & dmrRangesGenes$meandiff > 0,]
-seqlevelsStyle(normal_dmr) <- "UCSC"
-cancer_dmr <- dmrRangesGenes[dmrRangesGenes$min_smoothed_fdr < 0.05 & dmrRangesGenes$meandiff < 0,]
-seqlevelsStyle(cancer_dmr) <- "UCSC"
-
-#seqlevelsStyle(genesChr22) <- "UCSC"
-#Previous line gives this error
-#Error in find_NCBI_assembly_ftp_dir(assembly_accession, assembly_name = assembly_name) :
-#unable to find FTP dir for assembly GCF_000001405.40 in https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/
+#In normal samples, meandiff > 0
+genesDmr_normal <- unlist(tstrsplit(dmrRangesGenes[dmrRangesGenes$min_smoothed_fdr < 0.05 & dmrRangesGenes$meandiff > 0,]$overlapping.genes, split=", "))
+genesDmr_normal <- genesDmr_normal[!is.na(genesDmr_normal)]
+dmrGenes_normal <- genesChr22[genesChr22$gene_name %in% genesDmr_normal]
+dmrGenes_normal
+```
+```{r}
+#In cancer samples, meandiff < 0
+genesDmr_cancer <- unlist(tstrsplit(dmrRangesGenes[dmrRangesGenes$min_smoothed_fdr < 0.05 & dmrRangesGenes$meandiff < 0,]$overlapping.genes, split=", "))
+genesDmr_cancer <- genesDmr_cancer[!is.na(genesDmr_cancer)]
+dmrGenes_cancer <- genesChr22[genesChr22$gene_name %in% genesDmr_cancer]
+dmrGenes_cancer
 ```
 
-I couldnt solve the previous error so I am unable to continue. Anyway the code should follow like this:
+
+RUnning enrichment analysis on DMR genes from normal or cancer samples using all genes from chr22 as background
 
 ```{r}
-#job1 <- submitGreatJob(gr=normal_dmr, bg=genesChr22, species="hg38")
-#res1 <- getEnrichmentTables(job1)
+job1 <- submitGreatJob(gr=dmrGenes_normal, bg=genesChr22, species="hg38")
+res1 <- getEnrichmentTables(job1)
 
-#job2 <- submitGreatJob(gr=cancer_dmr, bg=genesChr22, species="hg38")
-#res2 <- getEnrichmentTables(job2)
+job2 <- submitGreatJob(gr=dmrGenes_cancer, bg=genesChr22, species="hg38")
+res2 <- getEnrichmentTables(job2)
 ```
 
 
 We plot the top Molecular Functions:
 
 ```{r, fig.width=9, fig.height=6}
-#bp1 <- res1$`GO Molecular Function`
-#bp2 <- res2$`GO Molecular Function`
+bp1 <- res1$`GO Molecular Function`
+bp2 <- res2$`GO Molecular Function`
 
 
-#ggplot(head(bp1,15), aes(Hyper_Fold_Enrichment, reorder(name, Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) + geom_point() + scale_color_viridis_c()
-#ggplot(head(bp2,15), aes(Hyper_Fold_Enrichment, reorder(name, Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) + geom_point() + scale_color_viridis_c()
+ggplot(head(bp1,15), aes(Hyper_Fold_Enrichment, reorder(name, Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) + geom_point() + scale_color_viridis_c()
+ggplot(head(bp2,15), aes(Hyper_Fold_Enrichment, reorder(name, Hyper_Adjp_BH), size=Hyper_Foreground_Region_Hits, color=-log10(Hyper_Adjp_BH))) + geom_point() + scale_color_viridis_c()
 ```
 
 
-Like this, we are testing whether significant DMRs (FDR < 0.05) in normal (normal_dmr object) or cancer (cancer_dmr object) samples are enriched for some specific processes compared to the rest of genes of chr22. Then we will extract the "molecular function" processes from the enrichment analysis and plot the top ones using ggplot(). This we way we could see which processes are enriched in normal or cancer samples. 
+We are testing whether genes in significant DMRs (FDR < 0.05) in normal or cancer samples are enriched for some specific processes compared to the rest of genes of chr22. Then we extract the "molecular function" processes from the enrichment analysis and plot the top ones using ggplot(). This we way we could see which processes are enriched in DMRs of normal or cancer samples. 
