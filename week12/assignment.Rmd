@@ -1,0 +1,96 @@
+---
+title: "assignment"
+author: "Guillermo Turiel"
+date: "2023-05-30"
+output: html_document
+---
+
+```{r}
+suppressWarnings(suppressPackageStartupMessages({
+  library(GenomicRanges)
+  library(AnnotationHub)
+  library(ensembldb)
+  library(InteractionSet)
+}))
+setwd("C:/Users/guruiz/Desktop/ethEpigen2023/week12")
+proxy_url <- "http://proxy.ethz.ch:3128";
+Sys.setenv(http_proxy = proxy_url, https_proxy = proxy_url, ftp_proxy = proxy_url)
+
+```
+
+## Download the data
+
+```{r}
+# p300 peaks in A549 cells:
+download.file("https://www.encodeproject.org/files/ENCFF776TFX/@@download/ENCFF776TFX.bed.gz", "p300.narrowPeak.gz")
+# interactions from Salviato et al 2021
+download.file("https://ethz-ins.org/content/hg38.SalviatoDistalEnhancerTargets.GR.rds", "salviato.rds")
+```
+# Human annotation
+```{r}
+ah <- AnnotationHub()
+ensdb <- ah[["AH95744"]] # human ensembl 104 annotation
+```
+
+## Load the p300 peaks:
+
+```{r}
+peaks <- rtracklayer::import("p300.narrowPeak.gz")
+seqlevelsStyle(peaks) = "NCBI"
+peaks
+```
+## Getting peaks from specificed distances to the TSS
+
+```{r}
+annotated_peaks <- suppressWarnings(epiwraps::annotateRegions(peaks, ensdb))
+peaks1 <- annotated_peaks[abs(annotated_peaks$distance2nearestTSS) > 2500 & abs(annotated_peaks$distance2nearestTSS) < 10000,]
+peaks2 <- annotated_peaks[abs(annotated_peaks$distance2nearestTSS) > 10000,]
+
+```
+
+## Loading interaction data from Salviato et al 2021
+
+```{r}
+salviato <- readRDS("salviato.rds")
+seqlevelsStyle(salviato) = "NCBI"
+```
+
+## Proportion of peaks between 2.5kb and  10kb from a TSS that share the predicted gene and closest gene
+
+```{r}
+o1 <- as.data.frame(findOverlaps(peaks1, salviato))
+o1$nearestTSS <- peaks1$nearestTSS.gene_name[o1$queryHits]
+o1$predicted_target <- salviato$target[o1$subjectHits]
+#Removing peaks with no associated gene in the TSS
+o1 <- o1[o1$nearestTSS != "",]
+
+peaks1_predicted_targets <- splitAsList(o1$predicted_target, o1$queryHits)
+peaks1_predicted = peaks1[as.numeric(names(peaks1_predicted_targets))]
+peaks1_predicted$predicted_targets = peaks1_predicted_targets
+
+#Some peaks have several predicted targets, so we select any peak in which at least one of the predicted targets is equal to the nearest TSS gene name
+selected1 = peaks1_predicted[any((peaks1_predicted$predicted_targets %in% peaks1_predicted$nearestTSS.gene_name) == TRUE)]
+
+print(paste0("Of the genes that are between 2.5 and 10kb from the nearest TSS, ",round(length(selected1)/length(peaks1_predicted)*100,2),"% form an interaction with that nearest gene"))
+
+```
+## Proportion of peaks more than 10kb from a TSS that share the predicted gene and closest gene
+
+```{r}
+o2 <- as.data.frame(findOverlaps(peaks2, salviato))
+o2$nearestTSS <- peaks2$nearestTSS.gene_name[o2$queryHits]
+o2$predicted_target <- salviato$target[o2$subjectHits]
+#Removing peaks with no associated gene in the TSS
+o2 <- o2[o2$nearestTSS != "",]
+
+peaks2_predicted_targets <- splitAsList(o2$predicted_target, o2$queryHits)
+peaks2_predicted = peaks2[as.numeric(names(peaks2_predicted_targets))]
+peaks2_predicted$predicted_targets = peaks2_predicted_targets
+
+#Some peaks have several predicted targets, so we select any peak in which at least one of the predicted targets is equal to the nearest TSS gene name
+selected2 = peaks2_predicted[any((peaks2_predicted$predicted_targets %in% peaks2_predicted$nearestTSS.gene_name) == TRUE)]
+
+print(paste0("Of the genes that are more than 10kb from the nearest TSS, ",round(length(selected2)/length(peaks2_predicted)*100,2),"% form an interaction with that nearest gene"))
+
+```
+
